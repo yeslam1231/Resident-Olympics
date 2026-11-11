@@ -335,7 +335,12 @@
     detach();
     code = c;
     const onErr = function (e) { fail(new Error("Lost the live connection: " + (e.code || e.message))); };
-    unsubs.push(be.onDoc("games/" + c, function (d) { G = d; liveRender(); }, onErr));
+    staged = {};
+    unsubs.push(be.onDoc("games/" + c, function (d) {
+      G = d;
+      if (d && d.phase !== "final") stageQuestion(d.qIndex + 1).catch(function () {});
+      liveRender();
+    }, onErr));
     unsubs.push(be.onCol("games/" + c + "/players", function (list) { P = list; liveRender(); }, onErr));
     unsubs.push(be.onCol("games/" + c + "/answers", function (list) { A = list; liveRender(); }, onErr));
   }
@@ -357,12 +362,24 @@
   function patch(data) {
     return be.setDoc("games/" + code, data, { merge: true }).catch(fail);
   }
+  // Sends a question (never its answer) to the phones ahead of time, so that images are
+  // already loaded when the clock starts and nobody loses seconds to a slow connection.
+  let staged = {};
+  function stageQuestion(n) {
+    const q = quiz.questions[n];
+    if (!q || !code) return Promise.resolve();
+    if (!staged[n]) {
+      staged[n] = be.setDoc("games/" + code + "/questions/" + n, { n: n, text: q.text, image: q.image, options: q.options, seconds: q.seconds, points: q.points })
+        .catch(function (e) { delete staged[n]; throw e; });
+    }
+    return staged[n];
+  }
   async function startQuestion(n) {
     const q = quiz.questions[n];
     if (!q) return;
     locking = false;
     try {
-      await be.setDoc("games/" + code + "/questions/" + n, { n: n, text: q.text, image: q.image, options: q.options, seconds: q.seconds, points: q.points });
+      await stageQuestion(n);
       const starts = {};
       starts[n] = be.TS;
       await be.setDoc("games/" + code, { phase: "question", qIndex: n, reveal: null, starts: starts }, { merge: true });

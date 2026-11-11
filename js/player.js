@@ -18,6 +18,8 @@
   let sending = false;
   let note = "";
   let sceneKey = "";
+  let qSubs = {}; // question number -> unsubscribe
+  let qCache = {}; // question number -> question document
 
   function lsGet(k) {
     try {
@@ -140,7 +142,7 @@
     unsubs.push(be.onDoc(base, function (d) {
       G = d;
       if (!d) return leave("The host closed this game.");
-      loadQuestion();
+      watchQuestions();
       render();
     }, lost));
     let seenSelf = false;
@@ -153,6 +155,9 @@
   function detach() {
     unsubs.forEach(function (u) { u(); });
     unsubs = [];
+    Object.keys(qSubs).forEach(function (k) { qSubs[k](); });
+    qSubs = {};
+    qCache = {};
     G = null;
     Q = null;
     board = null;
@@ -166,16 +171,38 @@
     note = msg || "";
     render();
   }
-  async function loadQuestion() {
-    if (!G || G.qIndex < 0 || (Q && Q.n === G.qIndex)) return;
-    const want = G.qIndex;
-    try {
-      const q = await be.getDoc("games/" + code + "/questions/" + want);
-      if (q && G && G.qIndex === want) {
-        Q = q;
-        render();
+  // Questions arrive over a live connection and the next one is fetched ahead of time,
+  // so it is already on the phone when the host starts the clock.
+  function watchQuestions() {
+    if (!G) return;
+    const want = [Math.max(0, G.qIndex), G.qIndex + 1].filter(function (n) { return n < G.qCount; });
+    Object.keys(qSubs).forEach(function (k) {
+      if (want.indexOf(Number(k)) < 0) {
+        qSubs[k]();
+        delete qSubs[k];
+        delete qCache[k];
       }
-    } catch (e) {}
+    });
+    want.forEach(function (n) {
+      if (qSubs[n]) return;
+      const sub = function () {
+        qSubs[n] = be.onDoc("games/" + code + "/questions/" + n, function (d) {
+          if (!d) return;
+          qCache[n] = d;
+          if (d.image) new Image().src = d.image;
+          if (G && G.qIndex === n) {
+            Q = d;
+            render();
+          }
+        }, function () {
+          // Dropped connection: try again shortly rather than leaving the player waiting.
+          delete qSubs[n];
+          setTimeout(function () { if (G && !qSubs[n]) watchQuestions(); }, 2000);
+        });
+      };
+      sub();
+    });
+    Q = qCache[G.qIndex] || null;
   }
 
   /* ---------- Answering ---------- */
