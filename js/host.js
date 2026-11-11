@@ -139,6 +139,19 @@
         h("button.btn.primary", { type: "button", onclick: function () { draft = RO.blankQuestion(); draftIsNew = true; view = "edit"; render(); } }, "Add question")
       ),
       quiz.questions.length
+        ? h("form.row", { onsubmit: function (e) {
+            e.preventDefault();
+            const v = Math.min(600, Math.max(5, Math.round(Number(document.getElementById("all-seconds").value) || RO.DEFAULT_SECONDS)));
+            quiz.questions.forEach(function (q) { q.seconds = v; });
+            persistQuiz();
+            render();
+            RO.toast("Every question now has " + v + " seconds.");
+          } },
+            h("label", { for: "all-seconds", class: "muted", style: "font-size:15px" }, "Time to answer for every question (seconds)"),
+            h("input", { type: "number", id: "all-seconds", min: 5, max: 600, value: RO.DEFAULT_SECONDS, style: "width:90px" }),
+            h("button.btn.small", { type: "submit" }, "Apply to all"))
+        : null,
+      quiz.questions.length
         ? h("div.qlist", list)
         : h("div.empty",
             h("p", "No questions yet. Add your first one, import a quiz file, or load five sample questions to see how a round plays."),

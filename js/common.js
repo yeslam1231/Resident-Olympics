@@ -5,6 +5,7 @@
 
   RO.LETTERS = ["A", "B", "C", "D", "E"];
   RO.MAX_OPTIONS = 5;
+  RO.DEFAULT_SECONDS = 10; // time to answer unless a question says otherwise
 
   /* ---------- DOM ---------- */
   // h("div.card.big", {onclick: fn, title: "x"}, child, "text", [more])
@@ -86,7 +87,7 @@
 
   /* ---------- Quiz format ---------- */
   RO.blankQuestion = function () {
-    return { id: RO.uid(), text: "", image: "", options: ["", "", "", ""], correct: 0, seconds: 30, points: 1, explanation: "" };
+    return { id: RO.uid(), text: "", image: "", options: ["", "", "", ""], correct: 0, seconds: RO.DEFAULT_SECONDS, points: 1, explanation: "" };
   };
 
   // Accepts anything (an imported file, an old save) and returns a clean quiz.
@@ -106,7 +107,7 @@
           while (options.length < 2) options.push("");
           let correct = Number.isInteger(q.correct) ? q.correct : 0;
           if (correct < 0 || correct >= options.length) correct = 0;
-          const seconds = Math.min(600, Math.max(5, Math.round(Number(q.seconds) || 30)));
+          const seconds = Math.min(600, Math.max(5, Math.round(Number(q.seconds) || RO.DEFAULT_SECONDS)));
           const points = Math.min(10, Math.max(1, Math.round(Number(q.points) || 1)));
           return {
             id: String(q.id || RO.uid()),
@@ -325,35 +326,35 @@
           image: RO.sampleStrip(),
           options: ["Internal defibrillation at 10–20 J", "Synchronised cardioversion at 200 J", "Intravenous adenosine", "Atrial pacing at 90 per minute"],
           correct: 0,
-          seconds: 30,
+          seconds: 10,
           explanation: "Ventricular fibrillation after reperfusion is treated with internal paddles at 10–20 J.",
         },
         {
           text: "Sample: Which conduit has the best long-term patency when grafted to the left anterior descending artery?",
           options: ["Radial artery", "Left internal thoracic artery", "Great saphenous vein", "Right gastroepiploic artery"],
           correct: 1,
-          seconds: 20,
+          seconds: 10,
           explanation: "The left internal thoracic artery to the LAD stays patent in over 90% of patients at 10 years.",
         },
         {
           text: "Sample: In most people, the artery to the atrioventricular node arises from which vessel?",
           options: ["Left anterior descending artery", "Left circumflex artery", "Right coronary artery", "Left main coronary artery"],
           correct: 2,
-          seconds: 20,
+          seconds: 10,
           explanation: "The AV nodal artery comes off the right coronary artery in roughly 80–90% of hearts.",
         },
         {
           text: "Sample: A Stanford type A aortic dissection is defined by involvement of which segment?",
           options: ["Descending thoracic aorta only", "Abdominal aorta only", "Iliac arteries", "Ascending aorta"],
           correct: 3,
-          seconds: 20,
+          seconds: 10,
           explanation: "Type A involves the ascending aorta, wherever the entry tear lies.",
         },
         {
           text: "Sample: Which drug reverses unfractionated heparin after cardiopulmonary bypass?",
           options: ["Vitamin K", "Tranexamic acid", "Protamine sulfate", "Idarucizumab"],
           correct: 2,
-          seconds: 15,
+          seconds: 10,
           explanation: "Protamine binds heparin and neutralises it.",
         },
       ],
