@@ -1,0 +1,62 @@
+rules_version = '2';
+// Resident Olympics — who may read and write what.
+// Everyone signs in anonymously. The device that opens a game is its host.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function game(code) { return get(/databases/$(database)/documents/games/$(code)).data; }
+    function isHost(code) { return signedIn() && game(code).hostUid == request.auth.uid; }
+
+    match /games/{code} {
+      // Readable one at a time by code; games cannot be listed.
+      allow get: if signedIn();
+      allow create: if signedIn()
+        && code.matches('^[A-Z]{4}$')
+        && request.resource.data.hostUid == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.hostUid == request.auth.uid
+        && request.resource.data.hostUid == resource.data.hostUid;
+      allow delete: if signedIn() && resource.data.hostUid == request.auth.uid;
+
+      // The question on screen (never includes the correct answer) and the scoreboard.
+      match /questions/{n} {
+        allow read: if signedIn();
+        allow write: if isHost(code);
+      }
+      match /meta/{doc} {
+        allow read: if signedIn();
+        allow write: if isHost(code);
+      }
+
+      match /players/{uid} {
+        allow read: if signedIn();
+        allow create, update: if signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 24
+          && request.resource.data.team is string
+          && request.resource.data.team.size() <= 30
+          && exists(/databases/$(database)/documents/games/$(code));
+        allow delete: if signedIn() && (request.auth.uid == uid || isHost(code));
+      }
+
+      // One answer per player per question, only while that question is open,
+      // stamped with the server's clock. Answers can never be changed, and only the host reads them.
+      match /answers/{id} {
+        allow read: if isHost(code);
+        allow create: if signedIn()
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.q is int
+          && id == string(request.resource.data.q) + '_' + request.auth.uid
+          && request.resource.data.choice is int
+          && request.resource.data.choice >= 0
+          && request.resource.data.choice < 5
+          && request.resource.data.at == request.time
+          && game(code).phase == 'question'
+          && game(code).qIndex == request.resource.data.q
+          && exists(/databases/$(database)/documents/games/$(code)/players/$(request.auth.uid));
+      }
+    }
+  }
+}
