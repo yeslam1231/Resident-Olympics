@@ -43,6 +43,14 @@ If the host laptop or a phone reloads mid-game, it picks up where it left off.
 - Rehearse once on the venue Wi-Fi with a few phones. Phones on mobile data work too.
 - Anyone who has the host address could open their own separate game, but cannot touch yours: a game belongs to the browser that opened it.
 
+## Online backup of the questions
+
+The Questions tab has an **Online backup** panel. Type a passphrase (at least 8 characters), then **Save online**. On any other computer, open the host page, type the same passphrase and **Load from online**. The backup holds the questions, answers and any images added in the editor.
+
+The backup is stored in your Firebase database under an address derived from the passphrase. It cannot be listed or searched, so only someone who knows the passphrase can open it, and anyone who knows it can also overwrite it. Use a passphrase residents would not guess, and still keep an exported file as a second copy.
+
+The backup needs the current [`firestore.rules`](firestore.rules) published in Firebase (Firestore → Rules → paste → Publish).
+
 ## Question bank images
 
 `media/` holds the images for the conference question bank, under random file names so they do not hint at the answers. The question files themselves (which contain the answers) are deliberately **not** in this repository, because the site is public. Keep them on the organizer's computer and load them on the host page with **Import file** (replace) or **Add from file** (append one or more topic files).

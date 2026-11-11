@@ -7,6 +7,15 @@ service cloud.firestore {
     function game(code) { return get(/databases/$(database)/documents/games/$(code)).data; }
     function isHost(code) { return signedIn() && game(code).hostUid == request.auth.uid; }
 
+    // Online backup of a quiz. The address is a hash of the organizer's passphrase:
+    // a backup can be opened only by someone who knows it, and backups cannot be listed.
+    match /vaults/{vault} {
+      allow get, create, update: if signedIn() && vault.matches('^[a-f0-9]{64}$');
+      match /questions/{q} {
+        allow read, write: if signedIn() && vault.matches('^[a-f0-9]{64}$');
+      }
+    }
+
     match /games/{code} {
       // Readable one at a time by code; games cannot be listed.
       allow get: if signedIn();

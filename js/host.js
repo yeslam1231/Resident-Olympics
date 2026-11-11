@@ -157,8 +157,72 @@
             h("p", "No questions yet. Add your first one, import a quiz file, or load five sample questions to see how a round plays."),
             h("button.btn", { type: "button", onclick: function () { quiz = RO.sampleQuiz(); persistQuiz(); render(); } }, "Load sample questions")
           ),
-      h("p.muted", { style: "font-size:15px" }, "Questions are saved in this browser on this device. Export a file to back them up or to move them to the laptop you will present from."),
+      h("p.muted", { style: "font-size:15px" }, "Questions are saved in this browser on this device. Keep a copy in the online backup below, or export a file."),
+      backupPanel(),
     ]);
+  }
+  /* ---------- Online backup ----------
+     The quiz is stored in the game's database under an address derived from a passphrase.
+     Whoever knows the passphrase can load or overwrite it; nobody can list or guess addresses. */
+  const PASS_KEY = "ro-backup-pass";
+  let backupBusy = false;
+  async function vaultPath() {
+    const pass = (document.getElementById("backup-pass").value || "").trim();
+    if (pass.length < 8) throw new Error("Use a passphrase of at least 8 characters.");
+    if (!window.crypto || !crypto.subtle) throw new Error("Online backup needs a secure (https) page.");
+    const bytes = new TextEncoder().encode("resident-olympics-vault:" + pass);
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)));
+    lsSet(PASS_KEY, pass);
+    return "vaults/" + hash.map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+  }
+  function backupPanel() {
+    return h("form.panel", { onsubmit: function (e) { e.preventDefault(); } },
+      h("h2", "Online backup"),
+      h("p.muted", be.mode === "demo"
+        ? "In demo mode the backup stays in this browser. Connect Firebase to keep it online."
+        : "Keeps a copy of these questions, answers and images online, protected by a passphrase you choose. Load it on any computer with the same passphrase. Anyone who knows the passphrase can read the answers, so share it only with co-organizers."),
+      h("div.row",
+        h("label.field.grow", h("span", "Passphrase (at least 8 characters)"),
+          h("input", { type: "text", id: "backup-pass", autocomplete: "off", spellcheck: "false", value: lsGet(PASS_KEY) || "", placeholder: "for example: gscs-olympics-2026-heart" })),
+        h("button.btn", { type: "button", id: "backup-save", disabled: backupBusy || !quiz.questions.length, onclick: backupSave }, "Save online"),
+        h("button.btn", { type: "button", id: "backup-load", disabled: backupBusy, onclick: backupLoad }, "Load from online"))
+    );
+  }
+  async function backupSave() {
+    backupBusy = true;
+    try {
+      const path = await vaultPath();
+      const old = await be.getCol(path + "/questions");
+      const keep = new Set(quiz.questions.map(function (q) { return q.id; }));
+      // One record per question, so a question with a large image still fits.
+      for (const q of quiz.questions) await be.setDoc(path + "/questions/" + q.id, q);
+      for (const o of old) if (!keep.has(o.id)) await be.deleteDoc(path + "/questions/" + o.id);
+      await be.setDoc(path, { title: quiz.title, order: quiz.questions.map(function (q) { return q.id; }), savedAt: be.TS });
+      RO.toast("Saved " + quiz.questions.length + " questions online.");
+    } catch (e) {
+      fail(/permission|insufficient/i.test(String(e && (e.code || e.message))) ? new Error("The database refused the backup. Publish the updated rules in Firebase first (see README).") : e);
+    }
+    backupBusy = false;
+    render();
+  }
+  async function backupLoad() {
+    backupBusy = true;
+    try {
+      const path = await vaultPath();
+      const meta = await be.getDoc(path);
+      if (!meta) throw new Error("No backup found for that passphrase. Check the spelling.");
+      const byId = {};
+      (await be.getCol(path + "/questions")).forEach(function (q) { byId[q.id] = q; });
+      const next = RO.normalizeQuiz({ title: meta.title, questions: (meta.order || []).map(function (id) { return byId[id]; }).filter(Boolean) });
+      if (!next.questions.length) throw new Error("That backup is empty.");
+      quiz = next;
+      persistQuiz();
+      RO.toast("Loaded " + next.questions.length + " questions" + (meta.savedAt ? ", saved " + new Date(meta.savedAt).toLocaleString() : "") + ".");
+    } catch (e) {
+      fail(/permission|insufficient/i.test(String(e && (e.code || e.message))) ? new Error("The database refused the request. Publish the updated rules in Firebase first (see README).") : e);
+    }
+    backupBusy = false;
+    render();
   }
   function move(i, d) {
     const qs = quiz.questions;
@@ -577,7 +641,8 @@
       } else {
         foot = [
           h("span.status.grow", h("b", RO.LETTERS[rev.correct] + " is correct. "), rightCount(rev) ),
-          h("button.btn.primary.big", { type: "button", id: "show-board", onclick: function () { patch({ phase: "board" }); } }, "Scoreboard"),
+          h("button.btn", { type: "button", id: "show-board", onclick: function () { patch({ phase: "board" }); } }, "Scoreboard"),
+          h("button.btn.primary.big", { type: "button", id: "next-fast", onclick: advance }, n + 1 >= G.qCount ? "Final result" : "Next question"),
         ];
       }
       return h("div.stage",

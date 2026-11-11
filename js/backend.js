@@ -12,6 +12,7 @@
  *   setDoc(path, data, {merge, createOnly, calibrate})
  *   deleteDoc(path)
  *   getDoc(path)    -> object | null
+ *   getCol(path)    -> [{id, ...data}]
  *   onDoc(path, cb, onError)        -> unsubscribe
  *   onCol(path, cb, onError)        -> unsubscribe; cb receives [{id, ...data}]
  * Timestamps are always delivered as millisecond numbers.
@@ -186,6 +187,9 @@
         });
         return off;
       },
+      getCol: async function (path) {
+        return listCol(path);
+      },
       onCol: function (path, cb) {
         const off = addListener(colL, path, cb);
         Promise.resolve().then(function () {
@@ -285,6 +289,12 @@
             if (onError) onError(err);
           }
         );
+      },
+      getCol: async function (path) {
+        const snap = await fs.collection(path).get();
+        return snap.docs.map(function (d) {
+          return Object.assign({ id: d.id }, fromStore(d.data(snapOpts)));
+        });
       },
       onCol: function (path, cb, onError) {
         return fs.collection(path).onSnapshot(
