@@ -2,22 +2,13 @@
 
 A live quiz game for cardiac surgery residents: a question with an image and multiple-choice answers on the big screen, a countdown, and an automatic scoreboard.
 
-There are two editions. Both use the same quiz file format, so questions written in one can be imported into the other.
+Residents join by scanning a QR code and answer on their own phones, with no account. The organizer runs the game from `host.html` on the projector laptop.
 
-| | Phone edition (this website) | Moderator edition (Claude artifact) |
-|---|---|---|
-| How residents answer | On their own phones, after scanning a QR code. No account needed. | Cards or voice. A moderator taps each team's answer. |
-| Needs | A free Firebase project and GitHub Pages | Nothing beyond the organizer's Claude account |
-| Best for | Any number of individuals or teams | Up to about a dozen teams |
-| Where | `index.html` (players), `host.html` (organizer) | `artifact/resident-olympics.html`, published at https://claude.ai/artifact/MxUkF5LjoAjY3Noo4tUPsr |
+## Try it without Firebase (demo mode)
 
-## Phone edition
+If `config.js` is set to `null` the site runs in demo mode, which works between tabs of one browser. Serve the folder (`python3 -m http.server`), open `host.html`, load the sample questions, open the lobby, then open the join link in a few more tabs.
 
-### Try it now (demo mode)
-
-Until Firebase is connected the site runs in demo mode, which works between tabs of one browser. Serve the folder (`python3 -m http.server`), open `host.html`, load the sample questions, open the lobby, then open the join link in a few more tabs.
-
-### Go live (about 10 minutes, once)
+## Go live (about 10 minutes, once)
 
 1. **Create a Firebase project.** Go to https://console.firebase.google.com, add a project (Google Analytics is not needed).
 2. **Turn on anonymous sign-in.** Build → Authentication → Get started → Sign-in method → Anonymous → Enable.
@@ -29,7 +20,7 @@ Until Firebase is connected the site runs in demo mode, which works between tabs
 
 The organizer opens `…/Resident-Olympics/host.html`. Players get the address from the QR code in the lobby.
 
-### Running a game
+## Running a game
 
 1. **Questions tab.** Add questions, each with an optional image, two to five choices, a time limit and a point value. Questions are stored in the browser on that device. Use **Export file** to back them up and **Import file** to load them on the laptop you will present from.
 2. **Run a game tab.** Choose the scoring and, if you want teams, list them. Open the lobby.
@@ -39,24 +30,18 @@ The organizer opens `…/Resident-Olympics/host.html`. Players get the address f
 
 If the host laptop or a phone reloads mid-game, it picks up where it left off.
 
-### Scoring
+## Scoring
 
 - **Correct plus speed:** a correct answer earns 1,000 points at the start of the clock, sliding to 500 at the buzzer, times the question's point value.
 - **Correct answers only:** a correct answer earns the question's point value. Ties go to whoever spent less time on their correct answers.
 - **Teams:** every resident answers on their own phone; a team's score is the average of its members, so team size does not decide the result. For one device per team, leave the team list empty and have each team join under its team name.
 
-### Good to know before the day
+## Good to know before the day
 
 - The correct answer is never sent to phones until the host reveals it, and the database rules stop anyone answering twice, late, or for someone else.
 - Firebase's free plan is enough for one conference game. Each question image is sent to every phone, so keep images to what the question needs.
 - Rehearse once on the venue Wi-Fi with a few phones. Phones on mobile data work too.
 - Anyone who has the host address could open their own separate game, but cannot touch yours: a game belongs to the browser that opened it.
-
-## Moderator edition
-
-Open the artifact, go to **Setup**, enter the teams and questions (or import a quiz file), then run it from **Stage**. During each question a keypad under the question lets the moderator tap each team's answer; tapping the same letter again clears it. With "Correct plus speed", tap answers in the order teams lock in: the first correct team earns 1,000 and the last 500.
-
-The game is saved with the artifact, so the organizer can open it on a second device (a tablet at the moderator's desk) and both stay in step. People the artifact is shared with can watch the stage but cannot change anything.
 
 ## Question bank images
 
@@ -93,4 +78,5 @@ The game is saved with the artifact, so the organizer can open it on a second de
 - `js/common.js` — quiz format, image shrinking, scoring
 - `firestore.rules` — who may read and write what
 - `vendor/` — Firebase SDK 10.14.1 and qrcode-generator 1.4.4, bundled so the site has no other dependencies
-- `artifact/resident-olympics.html` — source of the moderator edition
+- `media/` — question bank images
+- `assets/` — logo and backdrop
