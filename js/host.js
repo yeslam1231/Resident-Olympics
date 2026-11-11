@@ -86,6 +86,7 @@
     }
     return h("div.shell",
       h("header.topbar",
+        h("img.logo", { src: "assets/gscs-logo.png", alt: "Gulf Society for Cardiac Surgery" }),
         h("div.brand", "Resident ", h("b", "Olympics")),
         h("span.label", "Host"),
         h("div.spacer"),
@@ -441,6 +442,7 @@
   /* ---------- Stage pieces ---------- */
   function stageHead(where) {
     return h("header.stage-head",
+      h("img.logo", { src: "assets/gscs-logo.png", alt: "Gulf Society for Cardiac Surgery" }),
       h("div.where", where),
       h("div.spacer", { style: "flex:1" }),
       h("button.btn.small.quiet", { type: "button", onclick: function () { view = "questions"; render(); } }, "Exit to editor"),
@@ -507,7 +509,7 @@
       drawQr(canvas, joinUrl());
       return h("div.stage",
         stageHead(G.title),
-        h("div.stage-body",
+        h("div.stage-body.ribbon",
           h("div.lobby",
             h("div.joincard",
               h("h1", "Join the game"),
@@ -516,6 +518,7 @@
             ),
             h("div.roster",
               h("h2", { id: "roster-title" }, rosterTitle()),
+              h("p.hint", { id: "roster-hint", hidden: P.length > 0 }, "Names appear here as residents scan the code and join."),
               h("div.names", { id: "roster" }, rosterNames())
             )
           )
@@ -646,6 +649,7 @@
         if (r) {
           r.replaceChildren.apply(r, rosterNames());
           document.getElementById("roster-title").textContent = rosterTitle();
+          document.getElementById("roster-hint").hidden = P.length > 0;
           const s = document.getElementById("start-game");
           if (s) s.disabled = !P.length;
         }

@@ -45,17 +45,31 @@
   function frame(body) {
     return h("div.phone",
       h("header.phone-head",
-        h("div.brand", { style: "font-size:20px" }, "Resident ", h("b", "Olympics")),
+        h("img.logo", { src: "assets/gscs-logo.png", alt: "Gulf Society for Cardiac Surgery", style: "height:32px" }),
+        h("div.brand", { style: "font-size:16px" }, "Resident ", h("b", "Olympics")),
         me ? h("div.me", me.name, me.team ? " · " + me.team : "") : null
       ),
       h("main.phone-body", body)
     );
   }
 
+  // The joining screens: logo and title over the conference ribbon, the form in a card.
+  function welcome(title, card) {
+    return h("div.phone",
+      h("main.phone-body.ribbon",
+        h("div.welcome",
+          h("img.logo", { src: "assets/gscs-logo.png", alt: "Gulf Society for Cardiac Surgery" }),
+          h("p.kicker", "Gulf Society for Cardiac Surgery"),
+          title,
+          h("div.card", card)
+        )
+      )
+    );
+  }
+
   /* ---------- Joining ---------- */
   function viewCode() {
-    return frame([
-      h("h1", "Join the game"),
+    return welcome(h("h1", "Resident ", h("b", "Olympics")), [
       note ? h("div.notice", note) : null,
       be.mode === "demo" ? h("div.notice", h("strong", "Demo mode. "), "This only connects to a host open in another tab of this same browser.") : null,
       h("form", { style: "display:flex;flex-direction:column;gap:16px", onsubmit: function (e) {
@@ -93,8 +107,7 @@
   }
   function viewName() {
     const teams = lobbyInfo.teams || [];
-    return frame([
-      h("h1", lobbyInfo.title || "Resident Olympics"),
+    return welcome(h("h1", lobbyInfo.title || "Resident Olympics"), [
       note ? h("div.notice", note) : null,
       h("form", { style: "display:flex;flex-direction:column;gap:16px", onsubmit: function (e) {
         e.preventDefault();
@@ -245,11 +258,10 @@
     const row = myRow();
 
     if (G.phase === "lobby") {
-      return frame(h("div.center",
-        h("h1", "You're in"),
+      return welcome(h("h1", "You're in, ", h("b", me.name)), [
         h("p", "Watch the big screen. The first question appears here when the host starts."),
-        h("p.muted", G.scoring === "speed" ? "Correct answers score more the faster you lock in." : "Each correct answer scores. Speed only breaks ties.")
-      ));
+        h("p.muted", G.scoring === "speed" ? "Correct answers score more the faster you lock in." : "Each correct answer scores. Speed only breaks ties."),
+      ]);
     }
     if ((G.phase === "question" || G.phase === "locked" || G.phase === "reveal") && (!Q || Q.n !== n)) {
       return frame(h("div.center", h("p.muted", "Loading the question…")));
