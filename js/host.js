@@ -49,9 +49,6 @@
   function joinUrl() {
     return new URL(".", location.href).href + "?code=" + code;
   }
-  function shortUrl() {
-    return new URL(".", location.href).href.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  }
   // A button that asks once more before doing something that cannot be undone.
   function twoStep(id, label, confirmLabel, cls, fn) {
     const on = armed === id;
@@ -445,7 +442,6 @@
   function stageHead(where) {
     return h("header.stage-head",
       h("div.where", where),
-      h("div.join", "Join at ", h("span", shortUrl()), " · code ", h("b", code)),
       h("div.spacer", { style: "flex:1" }),
       h("button.btn.small.quiet", { type: "button", onclick: function () { view = "questions"; render(); } }, "Exit to editor"),
       h("button.btn.small.quiet", { type: "button", onclick: function () {
@@ -515,7 +511,6 @@
           h("div.lobby",
             h("div.joincard",
               h("h1", "Join the game"),
-              h("p.url", "Scan, or open ", h("b", shortUrl()), " and enter"),
               h("div.code", code),
               canvas
             ),

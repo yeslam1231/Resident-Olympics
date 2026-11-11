@@ -277,8 +277,8 @@
     if (G.phase === "reveal" && G.reveal) {
       const ok = mine === G.reveal.correct;
       const gained = row && board.qIndex === n ? row.delta : null;
-      return frame(h("div.center",
-        h("div.verdict" + (mine < 0 ? "" : ok ? ".ok" : ".no"), mine < 0 ? "No answer" : ok ? "Correct" : "Not this time"),
+      return frame(h("div.center.result" + (ok ? ".ok" : ".no"),
+        h("div.verdict" + (ok ? ".ok" : ".no"), mine < 0 ? "No answer" : ok ? "Correct" : "Wrong"),
         ok && gained != null ? h("div.bigstat", "+" + RO.fmtScore(gained)) : null,
         h("p", "Answer: ", h("b", RO.LETTERS[G.reveal.correct] + ". " + (Q.options[G.reveal.correct] || ""))),
         G.reveal.explanation ? h("p.muted", G.reveal.explanation) : null
@@ -288,6 +288,25 @@
     const final = G.phase === "final";
     const top = board && board.rows ? board.rows.slice(0, 5) : [];
     const myTeam = row && row.team && board.teams ? board.teams.find(function (t) { return t.name === row.team; }) : null;
+    function podium(title, list) {
+      const order = [list[1], list[0], list[2]];
+      return [
+        h("span.label", title),
+        h("div.podium", order.map(function (r, i) {
+          const place = [2, 1, 3][i];
+          return h("div.step.s" + place, r ? [h("div.who", r.name), h("div.pts", RO.fmtScore(r.score) + " pts")] : null, h("div.block", String(place)));
+        })),
+      ];
+    }
+    if (final && board && board.rows) {
+      return frame([
+        h("h1", "Final result"),
+        board.teams && board.teams.length ? podium("Teams", board.teams) : null,
+        podium(board.teams && board.teams.length ? "Players" : "Champions", board.rows),
+        row ? h("div.notice", h("strong", "You finished " + RO.ordinal(row.rank) + ". "), RO.fmtScore(row.score) + " points, " + row.right + " correct." + (myTeam ? " " + myTeam.name + " finished " + RO.ordinal(myTeam.rank) + "." : "")) : null,
+        h("button.btn.quiet", { type: "button", onclick: function () { leave(""); } }, "Leave game"),
+      ]);
+    }
     return frame([
       h("div.center", { style: "flex:none;padding-block:10px" },
         h("span.label", final ? "Final result" : "After question " + (n + 1) + " of " + G.qCount),
