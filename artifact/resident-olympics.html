@@ -25,7 +25,6 @@
   --body: "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --r: 10px;
   --ribbon: linear-gradient(rgba(23, 26, 61, 0.46), rgba(23, 26, 61, 0.46)), url("ribbon.jpg") center bottom / cover no-repeat #262c5e;
-  --ribbon-band: url("ribbon.jpg") center 96% / 100% auto no-repeat #262c5e;
   --ecg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='40' viewBox='0 0 120 40'%3E%3Cpath d='M0 22h28l5-6 5 6h9l4 7 6-27 6 32 4-12h11l8-8 8 8h26' fill='none' stroke='%23ffcd57' stroke-width='2.4' stroke-linejoin='round'/%3E%3C/svg%3E");
   --ecg-dim: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='40' viewBox='0 0 120 40'%3E%3Cpath d='M0 22h28l5-6 5 6h9l4 7 6-27 6 32 4-12h11l8-8 8 8h26' fill='none' stroke='%234a5194' stroke-width='2.4' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
@@ -44,8 +43,6 @@ p { margin: 0; }
 .brand { font: 700 19px/1 var(--display); letter-spacing: 0.06em; text-transform: uppercase; }
 .brand b { color: var(--gold); font-weight: 700; }
 .spacer { flex: 1; }
-.topbar, .stage-head { position: relative; border-bottom: 0 !important; margin-bottom: 12px; }
-.topbar::after, .stage-head::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 12px; background: var(--ribbon-band); }
 .tabs { display: flex; gap: 4px; }
 .tab { font: 600 16px/1 var(--body); color: var(--muted); background: none; border: 0; padding: 10px 14px; border-radius: 999px; cursor: pointer; }
 .tab[aria-current="true"] { background: var(--surface-2); color: var(--fg); }

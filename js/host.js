@@ -103,7 +103,8 @@
 
   /* ================= Questions ================= */
   function viewQuestions() {
-    const fileIn = h("input", { type: "file", accept: "application/json,.json", hidden: true, id: "import-file", onchange: importQuiz });
+    const fileIn = h("input", { type: "file", accept: "application/json,.json", hidden: true, id: "import-file", onchange: function (e) { importQuiz(e, false); } });
+    const addIn = h("input", { type: "file", accept: "application/json,.json", hidden: true, id: "add-file", multiple: true, onchange: function (e) { importQuiz(e, true); } });
     const list = quiz.questions.map(function (q, i) {
       const problem = RO.questionProblem(q);
       return h("div.qrow",
@@ -131,7 +132,9 @@
       h("div.row",
         h("h2.grow", { style: "font-size:30px" }, quiz.questions.length + (quiz.questions.length === 1 ? " question" : " questions")),
         fileIn,
-        h("button.btn.small.quiet", { type: "button", onclick: function () { fileIn.click(); } }, "Import file"),
+        addIn,
+        h("button.btn.small.quiet", { type: "button", title: "Replace these questions with a quiz file", onclick: function () { fileIn.click(); } }, "Import file"),
+        h("button.btn.small.quiet", { type: "button", title: "Add the questions from one or more quiz files to this list", onclick: function () { addIn.click(); } }, "Add from file"),
         h("button.btn.small.quiet", { type: "button", disabled: !quiz.questions.length, onclick: exportQuiz }, "Export file"),
         h("button.btn.primary", { type: "button", onclick: function () { draft = RO.blankQuestion(); draftIsNew = true; view = "edit"; render(); } }, "Add question")
       ),
@@ -159,16 +162,29 @@
     a.click();
     a.remove();
   }
-  function importQuiz(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    file.text().then(function (text) {
-      const next = RO.normalizeQuiz(JSON.parse(text));
-      if (!next.questions.length) throw new Error("That file has no questions in it.");
-      quiz = next;
+  // append = false replaces the quiz with one file; append = true adds one or more files to it.
+  function importQuiz(e, append) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    Promise.all(files.map(function (f) { return f.text(); })).then(function (texts) {
+      const sets = texts.map(function (t) { return RO.normalizeQuiz(JSON.parse(t)); });
+      const incoming = [].concat.apply([], sets.map(function (x) { return x.questions; }));
+      if (!incoming.length) throw new Error("That file has no questions in it.");
+      if (append) {
+        const have = new Set(quiz.questions.map(function (q) { return q.id; }));
+        let skipped = 0;
+        incoming.forEach(function (q) {
+          if (have.has(q.id)) { skipped += 1; return; }
+          have.add(q.id);
+          quiz.questions.push(q);
+        });
+        RO.toast("Added " + (incoming.length - skipped) + " questions." + (skipped ? " " + skipped + " were already in the list." : ""));
+      } else {
+        quiz = sets[0];
+        RO.toast("Imported " + incoming.length + " questions.");
+      }
       persistQuiz();
       render();
-      RO.toast("Imported " + next.questions.length + " questions.");
     }).catch(function (err) {
       fail(err instanceof SyntaxError ? new Error("That file is not a Resident Olympics quiz file.") : err);
     });

@@ -58,6 +58,10 @@ Open the artifact, go to **Setup**, enter the teams and questions (or import a q
 
 The game is saved with the artifact, so the organizer can open it on a second device (a tablet at the moderator's desk) and both stay in step. People the artifact is shared with can watch the stage but cannot change anything.
 
+## Question bank images
+
+`media/` holds the images for the conference question bank, under random file names so they do not hint at the answers. The question files themselves (which contain the answers) are deliberately **not** in this repository, because the site is public. Keep them on the organizer's computer and load them on the host page with **Import file** (replace) or **Add from file** (append one or more topic files).
+
 ## Quiz file format
 
 ```json
