@@ -22,11 +22,13 @@ The organizer opens `…/Resident-Olympics/host.html`. Players get the address f
 
 ## Running a game
 
-1. **Questions tab.** Add questions, each with an optional image, two to five choices, a time limit and a point value. Questions are stored in the browser on that device. Use **Export file** to back them up and **Import file** to load them on the laptop you will present from.
-2. **Run a game tab.** Choose the scoring and, if you want teams, list them. Open the lobby.
-3. **Lobby.** Put the host screen on the projector. Residents scan the code, enter a name and pick a team.
-4. **Each question.** The clock runs and stops by itself; **Stop the clock** ends it early. Then **Reveal answer**, **Scoreboard**, **Next question**.
-5. **Final result.** A podium, the full ranking, and **Download results** for a spreadsheet file.
+1. **Questions tab.** Add questions, each with an optional image, two to five choices, a time limit and a point value. Questions are stored in the browser on that device; keep a copy with **Online backup** or **Export file**.
+2. **Run a game tab.** Choose the scoring and, for a team game, list the team names. Open the lobby.
+3. **Lobby.** Put the host screen on the projector. Residents scan the code and enter a name. In a team game each team joins on one device and picks its team name.
+4. **Each question.** The clock runs, and when it reaches zero the answer is revealed automatically with the scoreboard beside it. The button under the clock reveals early: it reads **Stop the clock**, and changes to **Reveal the answer** once everyone has answered. Then **Next question**.
+5. **Final result.** A podium on the big screen and on every phone, the full ranking, and **Download results** for a spreadsheet file.
+
+**End game now** sits at the top of the screen, beside **Exit to editor**, and asks for a second press.
 
 If the host laptop or a phone reloads mid-game, it picks up where it left off.
 
@@ -34,7 +36,8 @@ If the host laptop or a phone reloads mid-game, it picks up where it left off.
 
 - **Correct plus speed:** a correct answer earns 1,000 points at the start of the clock, sliding to 500 at the buzzer, times the question's point value.
 - **Correct answers only:** a correct answer earns the question's point value. Ties go to whoever spent less time on their correct answers.
-- **Teams:** every resident answers on their own phone; a team's score is the average of its members, so team size does not decide the result. For one device per team, leave the team list empty and have each team join under its team name.
+- **Double points:** a question with a point value of 2 or more turns the big screen and the phones red and shows a pulsing ×2 badge.
+- **Teams:** one device per team and one scoreboard row per team. A second device can join a team only after a warning, for example to replace a phone that died; if two devices ever answer the same question for a team, only the earlier answer counts.
 
 ## Good to know before the day
 

@@ -19,8 +19,9 @@
   let A = []; // answers
   let unsubs = [];
   let stageKey = "";
-  let boardTab = "players";
-  let locking = false;
+  let gotAnswers = false; // the answers list has arrived at least once since connecting
+  let revealing = false;
+  let revealedCount = -1; // answers counted in the last reveal of the current question
   let busy = false;
   let armed = ""; // which two-step button is waiting for its second press
 
@@ -373,7 +374,7 @@
       ),
       h("div.panel",
         h("h2", "Teams"),
-        h("p.muted", "Leave this empty for an individual competition. With teams, every resident still answers on their own phone, picks a team when joining, and the team score is the average of its members. For one device per team, leave it empty and have each team join under its team name."),
+        h("p.muted", "Leave this empty for an individual competition. With teams, each team plays on one device: it picks its team name when joining, and the scoreboard shows one row per team."),
         h("label.field", h("span", "Team names, one per line"),
           h("textarea", { id: "teams", placeholder: "Aorta\nMitral\nTricuspid", oninput: function (e) {
             setup.teams = Array.from(new Set(e.target.value.split("\n").map(function (s) { return s.trim().slice(0, 30); }).filter(Boolean))).slice(0, 20);
@@ -433,10 +434,11 @@
       liveRender();
     }, onErr));
     unsubs.push(be.onCol("games/" + c + "/players", function (list) { P = list; liveRender(); }, onErr));
-    unsubs.push(be.onCol("games/" + c + "/answers", function (list) { A = list; liveRender(); }, onErr));
+    unsubs.push(be.onCol("games/" + c + "/answers", function (list) { A = list; gotAnswers = true; liveRender(); }, onErr));
   }
   // Live updates must not rebuild the question editor while the host is typing in it.
   function liveRender() {
+    if (G && G.phase === "reveal" && gotAnswers && !revealing && quiz.questions[G.qIndex] && answersFor(G.qIndex) !== revealedCount) reveal();
     if (view === "stage" || view === "setup") render();
   }
   function detach() {
@@ -446,6 +448,7 @@
     G = null;
     P = [];
     A = [];
+    gotAnswers = false;
     stageKey = "";
   }
 
@@ -468,7 +471,8 @@
   async function startQuestion(n) {
     const q = quiz.questions[n];
     if (!q) return;
-    locking = false;
+    revealing = false;
+    revealedCount = -1;
     try {
       await stageQuestion(n);
       const starts = {};
@@ -478,33 +482,43 @@
       fail(e);
     }
   }
-  function lockQuestion() {
-    if (locking) return;
-    locking = true;
-    patch({ phase: "locked" });
-  }
   function keys() {
     return quiz.questions.map(function (q) { return { correct: q.correct, seconds: q.seconds, points: q.points }; });
   }
+  function teamMode() {
+    return !!(G && G.teams && G.teams.length);
+  }
   function revealedUpto() {
-    return G.phase === "reveal" || G.phase === "board" || G.phase === "final" ? G.qIndex : G.qIndex - 1;
+    return G.phase === "reveal" || G.phase === "final" ? G.qIndex : G.qIndex - 1;
   }
   function standings() {
-    return RO.computeBoard(P, A, keys(), G.starts || {}, revealedUpto(), G.scoring);
+    return RO.computeBoard(P, A, keys(), G.starts || {}, revealedUpto(), G.scoring, teamMode()).rows;
   }
+  function answersFor(n) {
+    return A.filter(function (a) { return a.q === n; }).length;
+  }
+  // Shows the answer and publishes the standings. Runs by itself when the clock ends,
+  // and again if an answer sent at the buzzer arrives a moment later.
   async function reveal() {
-    const q = quiz.questions[G.qIndex];
+    if (revealing || !G || (G.phase !== "question" && G.phase !== "reveal")) return;
+    const n = G.qIndex;
+    const q = quiz.questions[n];
+    if (!q) return;
+    revealing = true;
     const counts = q.options.map(function () { return 0; });
     A.forEach(function (a) {
-      if (a.q === G.qIndex && a.choice >= 0 && a.choice < counts.length) counts[a.choice] += 1;
+      if (a.q === n && a.choice >= 0 && a.choice < counts.length) counts[a.choice] += 1;
     });
-    const b = RO.computeBoard(P, A, keys(), G.starts || {}, G.qIndex, G.scoring);
+    revealedCount = answersFor(n);
+    const rows = RO.computeBoard(P, A, keys(), G.starts || {}, n, G.scoring, teamMode()).rows;
     try {
-      await be.setDoc("games/" + code + "/meta/board", { qIndex: G.qIndex, rows: b.rows, teams: b.teams });
+      await be.setDoc("games/" + code + "/meta/board", { qIndex: n, rows: rows, count: revealedCount });
       await be.setDoc("games/" + code, { phase: "reveal", reveal: { correct: q.correct, counts: counts, explanation: q.explanation } }, { merge: true });
     } catch (e) {
       fail(e);
     }
+    revealing = false;
+    render(true);
   }
   function advance() {
     if (G.qIndex + 1 < Math.min(G.qCount, quiz.questions.length)) startQuestion(G.qIndex + 1);
@@ -517,15 +531,10 @@
     render();
   }
   function downloadResults() {
-    const b = standings();
-    const esc = function (s) { return '"' + String(s).replace(/"/g, '""') + '"'; };
-    const lines = ["Rank,Name,Team,Score,Correct answers"];
-    b.rows.forEach(function (r) { lines.push([r.rank, esc(r.name), esc(r.team), r.score, r.right].join(",")); });
-    if (b.teams.length) {
-      lines.push("", "Team rank,Team,Members,Average score");
-      b.teams.forEach(function (t) { lines.push([t.rank, esc(t.name), t.members, t.score].join(",")); });
-    }
-    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv" });
+    const esc = function (x) { return '"' + String(x).replace(/"/g, '""') + '"'; };
+    const lines = ["Rank," + (teamMode() ? "Team" : "Name") + ",Score,Correct answers"];
+    standings().forEach(function (r) { lines.push([r.rank, esc(r.name), r.score, r.right].join(",")); });
+    const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv" });
     const a = h("a", { href: URL.createObjectURL(blob), download: "resident-olympics-results-" + code + ".csv" });
     document.body.appendChild(a);
     a.click();
@@ -533,17 +542,24 @@
   }
 
   /* ---------- Stage pieces ---------- */
-  function stageHead(where) {
+  // points > 1 adds the pulsing multiplier badge; inPlay adds "End game now" (kept up here,
+  // away from the main button, so it is not pressed by accident).
+  function stageHead(where, points, inPlay) {
     return h("header.stage-head",
       h("img.logo", { src: "assets/gscs-logo.png", alt: "Gulf Society for Cardiac Surgery" }),
       h("div.where", where),
+      points > 1 ? multiBadge(points) : null,
       h("div.spacer", { style: "flex:1" }),
+      inPlay ? twoStep("finish", "End game now", "Press again to end", "btn small quiet", function () { patch({ phase: "final" }); }) : null,
       h("button.btn.small.quiet", { type: "button", onclick: function () { view = "questions"; render(); } }, "Exit to editor"),
       h("button.btn.small.quiet", { type: "button", onclick: function () {
         if (document.fullscreenElement) document.exitFullscreen();
         else document.documentElement.requestFullscreen().catch(function () {});
       } }, "Full screen")
     );
+  }
+  function multiBadge(points) {
+    return h("span.multi", { role: "img", "aria-label": (points === 2 ? "Double" : points + " times") + " points" }, h("b", "×" + points), h("small", "points"));
   }
   function optionList(q, rev) {
     const total = rev ? Math.max(1, rev.counts.reduce(function (a, b) { return a + b; }, 0)) : 1;
@@ -556,40 +572,48 @@
       );
     }));
   }
-  function answeredCount() {
-    const ids = new Set(P.map(function (p) { return p.id; }));
-    return A.filter(function (a) { return a.q === G.qIndex && ids.has(a.uid); }).length;
+  // Who is competing: teams (one row each) or individual players.
+  function sides() {
+    if (!teamMode()) return P.map(function (p) { return [p.id]; });
+    const by = {};
+    P.forEach(function (p) { (by[p.team || p.name] = by[p.team || p.name] || []).push(p.id); });
+    return Object.keys(by).map(function (k) { return by[k]; });
   }
-  function rankRows(list, limit, isTeam) {
+  function answeredCount() {
+    const done = new Set(A.filter(function (a) { return a.q === G.qIndex; }).map(function (a) { return a.uid; }));
+    return sides().filter(function (ids) { return ids.some(function (id) { return done.has(id); }); }).length;
+  }
+  function everyoneAnswered() {
+    const n = sides().length;
+    return n > 0 && answeredCount() >= n;
+  }
+  function rankRows(list, limit) {
     return h("div.ranks", list.slice(0, limit).map(function (r) {
       return h("div.rank" + (r.rank === 1 && r.score > 0 ? ".p1" : ""),
         h("span.pos", String(r.rank)),
-        h("span.who", r.name, isTeam ? h("small", r.members + (r.members === 1 ? " member" : " members")) : (r.team ? h("small", r.team) : null)),
-        h("span.delta", !isTeam && r.delta ? "+" + RO.fmtScore(r.delta) : ""),
+        h("span.who", r.name),
+        h("span.delta", r.delta ? "+" + RO.fmtScore(r.delta) : ""),
         h("span.pts", RO.fmtScore(r.score))
       );
     }));
   }
-  function tabSwitch() {
-    if (!G.teams || !G.teams.length) return null;
-    function b(id, label) {
-      return h("button.tab", { type: "button", "aria-current": String(boardTab === id), onclick: function () { boardTab = id; render(true); } }, label);
-    }
-    return h("nav.tabs", b("teams", "Teams"), b("players", "Players"));
-  }
   function rosterNames() {
     const sorted = P.slice().sort(function (a, b) { return (a.joinedAt || 0) - (b.joinedAt || 0); });
     return sorted.map(function (p) {
-      return h("span.name", p.name, p.team ? h("small", p.team) : null,
+      return h("span.name", p.name,
         h("button", { type: "button", "aria-label": "Remove " + p.name, title: "Remove", onclick: function () { be.deleteDoc("games/" + code + "/players/" + p.id).catch(fail); } }, "✕"));
     });
+  }
+  function revealButton() {
+    const all = everyoneAnswered();
+    return h("button.btn" + (all ? ".primary.big" : ""), { type: "button", id: "reveal-now", onclick: reveal }, all ? "Reveal the answer" : "Stop the clock");
   }
 
   function viewStage() {
     if (!G) return h("div.stage", h("div.stage-body", h("div.center", h("p.muted", "Connecting to the game…"))));
     const n = G.qIndex;
     const q = quiz.questions[n];
-    const missing = (G.phase === "question" || G.phase === "locked" || G.phase === "reveal") && !q;
+    const missing = (G.phase === "question" || G.phase === "reveal") && !q;
     if (missing) {
       return h("div.stage", stageHead("Game " + code), h("div.stage-body", h("div.center",
         h("p", "This game's questions are not on this device. Import the same quiz file, or close the game."),
@@ -611,103 +635,91 @@
             ),
             h("div.roster",
               h("h2", { id: "roster-title" }, rosterTitle()),
-              h("p.hint", { id: "roster-hint", hidden: P.length > 0 }, "Names appear here as residents scan the code and join."),
+              h("p.hint", { id: "roster-hint", hidden: P.length > 0 }, G.teams.length ? "Team names appear here as each team scans the code and joins on one device." : "Names appear here as residents scan the code and join."),
               h("div.names", { id: "roster" }, rosterNames())
             )
           )
         ),
         h("footer.stage-foot",
-          h("span.status.grow", G.scoring === "speed" ? "Scoring: correct plus speed" : "Scoring: correct answers only", G.teams.length ? " · " + G.teams.length + " teams" : ""),
+          h("span.status.grow", G.scoring === "speed" ? "Scoring: correct plus speed" : "Scoring: correct answers only", G.teams.length ? " · " + G.teams.length + " teams, one device each" : ""),
           twoStep("close", "Cancel game", "Press again to cancel", "btn small danger", closeGame),
           h("button.btn.primary.big", { type: "button", id: "start-game", disabled: !P.length, onclick: function () { startQuestion(0); } }, "Start · " + G.qCount + " questions")
         )
       );
     }
 
-    if (G.phase === "question" || G.phase === "locked" || G.phase === "reveal") {
-      const rev = G.phase === "reveal" ? G.reveal : null;
-      let foot;
-      if (G.phase === "question") {
-        foot = [
-          h("span.status", { id: "answered" }, answeredText()),
-          h("div.clock.grow", { id: "clock" }, h("div.trace", h("i", { id: "clock-fill", style: "width:100%" })), h("div.secs", { id: "clock-secs" }, String(q.seconds))),
-          h("button.btn", { type: "button", id: "lock-now", onclick: lockQuestion }, "Stop the clock"),
-        ];
-      } else if (G.phase === "locked") {
-        foot = [
-          h("span.status.grow", { id: "answered" }, h("b", "Time. "), answeredText()),
-          h("button.btn.primary.big", { type: "button", id: "reveal", onclick: reveal }, "Reveal answer"),
-        ];
-      } else {
-        foot = [
-          h("span.status.grow", h("b", RO.LETTERS[rev.correct] + " is correct. "), rightCount(rev) ),
-          h("button.btn", { type: "button", id: "show-board", onclick: function () { patch({ phase: "board" }); } }, "Scoreboard"),
-          h("button.btn.primary.big", { type: "button", id: "next-fast", onclick: advance }, n + 1 >= G.qCount ? "Final result" : "Next question"),
-        ];
-      }
+    if (G.phase === "question") {
       return h("div.stage",
-        stageHead("Question " + (n + 1) + " of " + G.qCount + (q.points > 1 ? " · ×" + q.points : "")),
+        stageHead("Question " + (n + 1) + " of " + G.qCount, q.points, true),
         h("div.stage-body",
           q.text ? h("h1.q-text", q.text) : null,
           h("div.q-split" + (q.image ? ".has-img" : ""),
             q.image ? h("div.q-media", h("img", { src: q.image, alt: "Question image" })) : null,
-            h("div", { style: "display:flex;flex-direction:column;gap:14px;min-height:0;justify-content:center" },
-              optionList(q, rev),
-              rev && rev.explanation ? h("p.explain", rev.explanation) : null
-            )
-          )
-        ),
-        h("footer.stage-foot", foot)
-      );
-    }
-
-    // board / final
-    const b = standings();
-    const showTeams = G.teams.length && boardTab === "teams";
-    const list = showTeams ? b.teams : b.rows;
-    const last = G.qIndex + 1 >= G.qCount;
-    if (G.phase === "final") {
-      const top = list.slice(0, 3);
-      const order = [top[1], top[0], top[2]];
-      return h("div.stage",
-        stageHead("Final result"),
-        h("div.stage-body",
-          h("div.board",
-            h("div.row", h("h1.grow", showTeams ? "Winning teams" : "Champions"), tabSwitch()),
-            h("div.podium", order.map(function (r, i) {
-              const place = [2, 1, 3][i];
-              return h("div.step.s" + place, r ? [h("div.who", r.name), h("div.pts", RO.fmtScore(r.score) + " pts")] : null, h("div.block", String(place)));
-            })),
-            list.length > 3 ? rankRows(list.slice(3), 50, showTeams) : null
+            h("div", { style: "display:flex;flex-direction:column;gap:14px;min-height:0;justify-content:center" }, optionList(q, null))
           )
         ),
         h("footer.stage-foot",
-          h("span.status.grow", P.length + " players · " + G.qCount + " questions"),
-          h("button.btn", { type: "button", onclick: downloadResults }, "Download results"),
-          twoStep("close", "Close game", "Press again to close", "btn danger", closeGame)
+          h("span.status", { id: "answered" }, answeredText()),
+          h("div.clock.grow", { id: "clock" }, h("div.trace", h("i", { id: "clock-fill", style: "width:100%" })), h("div.secs", { id: "clock-secs" }, String(q.seconds))),
+          revealButton()
         )
       );
     }
+
+    const rows = standings();
+    if (G.phase === "reveal" && G.reveal) {
+      // The answer and the standings share one screen: question on the left, scoreboard on the right.
+      const rev = G.reveal;
+      return h("div.stage",
+        stageHead("Question " + (n + 1) + " of " + G.qCount, q.points, true),
+        h("div.stage-body.revealed",
+          h("div.rv-q",
+            q.text ? h("h1.q-text", q.text) : null,
+            q.image ? h("div.q-media", h("img", { src: q.image, alt: "Question image" })) : null,
+            optionList(q, rev),
+            rev.explanation ? h("p.explain", rev.explanation) : null
+          ),
+          h("div.rv-board",
+            h("h2", "Scoreboard"),
+            rankRows(rows, 8),
+            rows.length > 8 ? h("p.muted", "Top 8 of " + rows.length) : null
+          )
+        ),
+        h("footer.stage-foot",
+          h("span.status.grow", h("b", RO.LETTERS[rev.correct] + " is correct. "), rightCount(rev)),
+          h("button.btn.primary.big", { type: "button", id: "next", onclick: advance }, n + 1 >= G.qCount ? "Final result" : "Next question")
+        )
+      );
+    }
+
+    // final
+    const order = [rows[1], rows[0], rows[2]];
     return h("div.stage",
-      stageHead("After question " + (n + 1) + " of " + G.qCount),
+      stageHead("Final result"),
       h("div.stage-body",
         h("div.board",
-          h("div.row", h("h1.grow", "Scoreboard"), tabSwitch()),
-          rankRows(list, 8, showTeams)
+          h("h1", teamMode() ? "Winning teams" : "Champions"),
+          h("div.podium", order.map(function (r, i) {
+            const place = [2, 1, 3][i];
+            return h("div.step.s" + place, r ? [h("div.who", r.name), h("div.pts", RO.fmtScore(r.score) + " pts")] : null, h("div.block", String(place)));
+          })),
+          rows.length > 3 ? rankRows(rows.slice(3), 50) : null
         )
       ),
       h("footer.stage-foot",
-        h("span.status.grow", list.length > 8 ? "Top 8 of " + list.length : ""),
-        twoStep("finish", "End game now", "Press again to end", "btn small quiet", function () { patch({ phase: "final" }); }),
-        h("button.btn.primary.big", { type: "button", id: "next", onclick: advance }, last ? "Final result" : "Next question")
+        h("span.status.grow", rows.length + (teamMode() ? " teams · " : " players · ") + G.qCount + " questions"),
+        h("button.btn", { type: "button", onclick: downloadResults }, "Download results"),
+        twoStep("close", "Close game", "Press again to close", "btn danger", closeGame)
       )
     );
   }
   function rosterTitle() {
-    return P.length ? P.length + (P.length === 1 ? " player in" : " players in") : "Waiting for players";
+    if (!P.length) return G.teams.length ? "Waiting for teams" : "Waiting for players";
+    const n = sides().length;
+    return G.teams.length ? n + (n === 1 ? " team in" : " teams in") : n + (n === 1 ? " player in" : " players in");
   }
   function answeredText() {
-    return answeredCount() + " of " + P.length + " answered";
+    return answeredCount() + " of " + sides().length + " answered";
   }
   function rightCount(rev) {
     const total = rev.counts.reduce(function (a, b) { return a + b; }, 0);
@@ -733,21 +745,30 @@
 
   /* ================= Render loop ================= */
   function render(force) {
+    const live = view === "stage" && G && (G.phase === "question" || G.phase === "reveal") && quiz.questions[G.qIndex];
+    // Double-point questions switch the whole screen to the red theme.
+    document.body.classList.toggle("double", !!(live && live.points > 1));
     if (view === "stage") {
       // Player and answer updates arrive constantly; only rebuild the stage when the scene changes.
-      const key = G ? [G.phase, G.qIndex, boardTab, armed, code].join("|") : "none";
+      const key = G ? [G.phase, G.qIndex, armed, code].join("|") : "none";
       if (!force && key === stageKey && G) {
         const a = document.getElementById("answered");
-        if (a && G.phase === "question") a.textContent = answeredText();
+        if (a && G.phase === "question") {
+          a.textContent = answeredText();
+          const btn = document.getElementById("reveal-now");
+          const all = everyoneAnswered();
+          btn.textContent = all ? "Reveal the answer" : "Stop the clock";
+          btn.className = "btn" + (all ? " primary big" : "");
+        }
         const r = document.getElementById("roster");
         if (r) {
           r.replaceChildren.apply(r, rosterNames());
           document.getElementById("roster-title").textContent = rosterTitle();
           document.getElementById("roster-hint").hidden = P.length > 0;
-          const s = document.getElementById("start-game");
-          if (s) s.disabled = !P.length;
+          const st = document.getElementById("start-game");
+          if (st) st.disabled = !P.length;
         }
-        if (G.phase === "board" || G.phase === "final") RO.mount(root, viewStage());
+        if (G.phase === "final") RO.mount(root, viewStage());
         return;
       }
       stageKey = key;
@@ -770,8 +791,8 @@
     fill.style.width = Math.max(0, Math.min(100, (leftMs / (q.seconds * 1000)) * 100)) + "%";
     document.getElementById("clock-secs").textContent = String(Math.max(0, Math.ceil(leftMs / 1000)));
     document.getElementById("clock").classList.toggle("low", leftMs <= 5000);
-    // A short grace period lets answers tapped at the buzzer arrive.
-    if (leftMs <= -600) lockQuestion();
+    // Time is up: reveal automatically. A short grace period lets answers tapped at the buzzer arrive.
+    if (leftMs <= -600) reveal();
   }
 
   async function boot() {

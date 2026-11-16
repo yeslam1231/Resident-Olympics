@@ -18,6 +18,8 @@
   let sending = false;
   let note = "";
   let sceneKey = "";
+  let takenTeams = []; // teams that already have a device, as seen when this phone looked up the game
+  let confirmTeam = ""; // team the player has been warned is already connected
   let qSubs = {}; // question number -> unsubscribe
   let qCache = {}; // question number -> question document
 
@@ -39,7 +41,8 @@
     return v == null ? -1 : Number(v);
   }
   function myRow() {
-    return board && board.rows ? board.rows.find(function (r) { return r.uid === be.uid; }) : null;
+    // In a team game the row belongs to the team, whichever device answered.
+    return board && board.rows ? board.rows.find(function (r) { return r.uid === be.uid || (r.uids || []).indexOf(be.uid) >= 0; }) : null;
   }
 
   function frame(body) {
@@ -47,7 +50,7 @@
       h("header.phone-head",
         h("img.logo", { src: "assets/gscs-logo.png", alt: "Gulf Society for Cardiac Surgery", style: "height:32px" }),
         h("div.brand", { style: "font-size:16px" }, "Resident ", h("b", "Olympics")),
-        me ? h("div.me", me.name, me.team ? " · " + me.team : "") : null
+        me ? h("div.me", me.name) : null
       ),
       h("main.phone-body", body)
     );
@@ -99,11 +102,20 @@
         code = c;
         lobbyInfo = g;
         note = "";
+        confirmTeam = "";
+        takenTeams = (g.teams || []).length ? await teamsInUse(c) : [];
       }
     } catch (e) {
       note = "Could not reach the game. Check your connection and try again.";
     }
     render();
+  }
+  async function teamsInUse(c) {
+    try {
+      return (await be.getCol("games/" + c + "/players")).filter(function (p) { return p.id !== be.uid; }).map(function (p) { return p.team; }).filter(Boolean);
+    } catch (e) {
+      return [];
+    }
   }
   function viewName() {
     const teams = lobbyInfo.teams || [];
@@ -111,27 +123,40 @@
       note ? h("div.notice", note) : null,
       h("form", { style: "display:flex;flex-direction:column;gap:16px", onsubmit: function (e) {
         e.preventDefault();
-        join(document.getElementById("name").value, teams.length ? document.getElementById("team").value : "");
+        if (teams.length) joinTeam(document.getElementById("team").value);
+        else join(document.getElementById("name").value, "");
       } },
-        h("label.field", h("span", teams.length ? "Your name" : "Your name, or your team's name"),
-          h("input", { type: "text", id: "name", maxlength: 24, autocomplete: "name", placeholder: "Dr. Al-Harbi", value: (me && me.name) || "" })),
         teams.length
-          ? h("label.field", h("span", "Your team"),
-              h("select", { id: "team" }, h("option", { value: "" }, "Choose a team…"), teams.map(function (t) { return h("option", { value: t }, t); })))
-          : null,
-        h("button.btn.primary.big", { type: "submit", disabled: sending }, "Join"),
-        h("button.btn.quiet", { type: "button", onclick: function () { lobbyInfo = null; note = ""; render(); } }, "Use a different code")
+          // Team game: one device per team, so the team name is the player.
+          ? h("label.field", h("span", "Your team (one device per team)"),
+              h("select", { id: "team" }, h("option", { value: "" }, "Choose your team…"), teams.map(function (t) {
+                return h("option", { value: t, selected: t === confirmTeam }, t + (takenTeams.indexOf(t) >= 0 ? " (already connected)" : ""));
+              })))
+          : h("label.field", h("span", "Your name"),
+              h("input", { type: "text", id: "name", maxlength: 24, autocomplete: "name", placeholder: "Dr. Al-Harbi", value: "" })),
+        h("button.btn.primary.big", { type: "submit", disabled: sending }, confirmTeam ? "Use this device for " + confirmTeam : "Join"),
+        h("button.btn.quiet", { type: "button", onclick: function () { lobbyInfo = null; note = ""; confirmTeam = ""; render(); } }, "Use a different code")
       ),
     ]);
+  }
+  async function joinTeam(team) {
+    if (!team) {
+      note = "Choose your team.";
+      return render();
+    }
+    takenTeams = await teamsInUse(code);
+    if (takenTeams.indexOf(team) >= 0 && confirmTeam !== team) {
+      // A second device may only take over on purpose, for example when a phone has died.
+      confirmTeam = team;
+      note = team + " is already connected on another device. Only one device per team should answer. Press the button again only if this device is replacing it.";
+      return render();
+    }
+    return join(team, team);
   }
   async function join(name, team) {
     name = String(name || "").trim().replace(/\s+/g, " ").slice(0, 24);
     if (!name) {
       note = "Enter a name so the scoreboard can show you.";
-      return render();
-    }
-    if ((lobbyInfo.teams || []).length && !team) {
-      note = "Choose your team.";
       return render();
     }
     sending = true;
@@ -140,6 +165,7 @@
       me = { name: name, team: team || "" };
       lsSet(SESSION_KEY, JSON.stringify({ code: code, name: me.name, team: me.team }));
       note = "";
+      confirmTeam = "";
       attach();
     } catch (e) {
       note = "Could not join. The game may have been closed.";
@@ -234,9 +260,14 @@
     render(true);
   }
 
+  function multiBadge(points) {
+    return h("span.multi", { role: "img", "aria-label": (points === 2 ? "Double" : points + " times") + " points" }, h("b", "×" + points), h("small", "points"));
+  }
   function questionCard(mine, open) {
     return [
-      h("div.row", h("span.label.grow", "Question " + (G.qIndex + 1) + " of " + G.qCount),
+      h("div.row", h("span.label", "Question " + (G.qIndex + 1) + " of " + G.qCount),
+        Q.points > 1 ? multiBadge(Q.points) : null,
+        h("span.grow"),
         open ? h("span.num", { id: "p-secs", style: "font:700 26px/1 var(--display)" }, "") : null),
       open ? h("div.clock", h("div.trace", { style: "height:24px;background-size:auto 24px" }, h("i", { id: "p-fill", style: "width:100%;background-size:auto 24px" }))) : null,
       Q.text ? h("h2.q-text", Q.text) : null,
@@ -263,7 +294,7 @@
         h("p.muted", G.scoring === "speed" ? "Correct answers score more the faster you lock in." : "Each correct answer scores. Speed only breaks ties."),
       ]);
     }
-    if ((G.phase === "question" || G.phase === "locked" || G.phase === "reveal") && (!Q || Q.n !== n)) {
+    if ((G.phase === "question" || G.phase === "reveal") && (!Q || Q.n !== n)) {
       return frame(h("div.center", h("p.muted", "Loading the question…")));
     }
     if (G.phase === "question") {
@@ -280,68 +311,50 @@
           sending ? "Sending…" : ready ? "Lock in " + RO.LETTERS[picked.i] : "Choose an answer"),
       ]);
     }
-    if (G.phase === "locked") {
-      return frame(h("div.center",
-        h("h1", "Time"),
-        h("p", mine >= 0 ? "You answered " + RO.LETTERS[mine] + ". The answer is coming up." : "No answer from you on this one.")
-      ));
-    }
     if (G.phase === "reveal" && G.reveal) {
+      // Result and standing together, as on the big screen.
       const ok = mine === G.reveal.correct;
-      const gained = row && board.qIndex === n ? row.delta : null;
-      return frame(h("div.center.result" + (ok ? ".ok" : ".no"),
-        h("div.verdict" + (ok ? ".ok" : ".no"), mine < 0 ? "No answer" : ok ? "Correct" : "Wrong"),
-        ok && gained != null ? h("div.bigstat", "+" + RO.fmtScore(gained)) : null,
-        h("p", "Answer: ", h("b", RO.LETTERS[G.reveal.correct] + ". " + (Q.options[G.reveal.correct] || ""))),
-        G.reveal.explanation ? h("p.muted", G.reveal.explanation) : null
-      ));
-    }
-    // board / final
-    const final = G.phase === "final";
-    const top = board && board.rows ? board.rows.slice(0, 5) : [];
-    const myTeam = row && row.team && board.teams ? board.teams.find(function (t) { return t.name === row.team; }) : null;
-    function podium(title, list) {
-      const order = [list[1], list[0], list[2]];
-      return [
-        h("span.label", title),
-        h("div.podium", order.map(function (r, i) {
-          const place = [2, 1, 3][i];
-          return h("div.step.s" + place, r ? [h("div.who", r.name), h("div.pts", RO.fmtScore(r.score) + " pts")] : null, h("div.block", String(place)));
-        })),
-      ];
-    }
-    if (final && board && board.rows) {
+      const fresh = row && board.qIndex === n;
       return frame([
-        h("h1", "Final result"),
-        board.teams && board.teams.length ? podium("Teams", board.teams) : null,
-        podium(board.teams && board.teams.length ? "Players" : "Champions", board.rows),
-        row ? h("div.notice", h("strong", "You finished " + RO.ordinal(row.rank) + ". "), RO.fmtScore(row.score) + " points, " + row.right + " correct." + (myTeam ? " " + myTeam.name + " finished " + RO.ordinal(myTeam.rank) + "." : "")) : null,
-        h("button.btn.quiet", { type: "button", onclick: function () { leave(""); } }, "Leave game"),
+        h("div.center.result" + (ok ? ".ok" : ".no"),
+          Q.points > 1 ? multiBadge(Q.points) : null,
+          h("div.verdict" + (ok ? ".ok" : ".no"), mine < 0 ? "No answer" : ok ? "Correct" : "Wrong"),
+          ok && fresh ? h("div.bigstat", "+" + RO.fmtScore(row.delta)) : null,
+          h("p", "Answer: ", h("b", RO.LETTERS[G.reveal.correct] + ". " + (Q.options[G.reveal.correct] || ""))),
+          G.reveal.explanation ? h("p.muted", G.reveal.explanation) : null
+        ),
+        fresh ? h("div.standing",
+          h("span.label", "Your standing"),
+          h("div.row", { style: "justify-content:center;align-items:baseline;gap:14px" },
+            h("span.bigstat", { style: "font-size:44px" }, RO.ordinal(row.rank)),
+            h("span", h("b", RO.fmtScore(row.score)), " points · " + row.right + " correct"))
+        ) : null,
       ]);
     }
+    // final
+    const rows = board && board.rows ? board.rows : [];
+    const order = [rows[1], rows[0], rows[2]];
     return frame([
-      h("div.center", { style: "flex:none;padding-block:10px" },
-        h("span.label", final ? "Final result" : "After question " + (n + 1) + " of " + G.qCount),
-        row ? h("div.bigstat", RO.ordinal(row.rank)) : h("p.muted", "Scores are on the big screen."),
-        row ? h("p", h("b", RO.fmtScore(row.score)), " points · " + row.right + " correct") : null,
-        myTeam ? h("p.muted", myTeam.name + " is " + RO.ordinal(myTeam.rank) + " of " + board.teams.length + " teams") : null
-      ),
-      top.length ? h("div.ranks", top.map(function (r) {
-        return h("div.rank" + (r.uid === be.uid ? ".me" : ""), { style: "font-size:18px" },
-          h("span.pos", String(r.rank)), h("span.who", r.name), h("span.delta", ""), h("span.pts", RO.fmtScore(r.score)));
-      })) : null,
-      final ? h("button.btn.quiet", { type: "button", onclick: function () { leave(""); } }, "Leave game") : null,
+      h("h1", "Final result"),
+      rows.length ? h("div.podium", order.map(function (r, i) {
+        const place = [2, 1, 3][i];
+        return h("div.step.s" + place, r ? [h("div.who", r.name), h("div.pts", RO.fmtScore(r.score) + " pts")] : null, h("div.block", String(place)));
+      })) : h("p.muted", "The result is on the big screen."),
+      row ? h("div.notice", h("strong", "You finished " + RO.ordinal(row.rank) + ". "), RO.fmtScore(row.score) + " points, " + row.right + " correct.") : null,
+      h("button.btn.quiet", { type: "button", onclick: function () { leave(""); } }, "Leave game"),
     ]);
   }
 
   /* ---------- Render ---------- */
   function render(force) {
+    // Double-point questions switch the phone to the red theme too.
+    document.body.classList.toggle("double", !!(me && G && Q && Q.n === G.qIndex && Q.points > 1 && (G.phase === "question" || G.phase === "reveal")));
     if (!me) {
       sceneKey = "";
       return RO.mount(root, lobbyInfo ? viewName() : viewCode());
     }
     // Skip rebuilds that would change nothing, so a selection is never interrupted mid-tap.
-    const key = G ? [G.phase, G.qIndex, Q ? Q.n : -1, board ? board.qIndex : -1, G.qIndex >= 0 ? myAnswer(G.qIndex) : -1].join("|") : "none";
+    const key = G ? [G.phase, G.qIndex, Q ? Q.n : -1, board ? board.qIndex + ":" + (board.count || 0) : -1, G.qIndex >= 0 ? myAnswer(G.qIndex) : -1].join("|") : "none";
     if (!force && key === sceneKey) return;
     sceneKey = key;
     RO.mount(root, viewGame());

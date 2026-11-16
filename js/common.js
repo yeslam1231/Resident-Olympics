@@ -187,15 +187,28 @@
   //   keys     [{correct, seconds, points}] indexed by question number
   //   starts   {questionNumber: ms}
   //   upto     last question number whose answer is revealed
-  RO.computeBoard = function (players, answers, keys, starts, upto, scoring) {
+  //   teamMode true = one row per team. A team answers from one device; if a second device
+  //            ever answers for the same team, only the earliest answer to each question counts.
+  RO.computeBoard = function (players, answers, keys, starts, upto, scoring, teamMode) {
     const rows = new Map();
+    const owner = {}; // device id -> row key
     players.forEach(function (p) {
-      rows.set(p.id, { uid: p.id, name: p.name || "Player", team: p.team || "", score: 0, time: 0, right: 0, delta: 0, choice: -1, correct: false });
+      const key = teamMode ? "team:" + (p.team || p.name) : p.id;
+      owner[p.id] = key;
+      if (!rows.has(key)) rows.set(key, { uid: key, uids: [], name: (teamMode ? p.team || p.name : p.name) || "Player", score: 0, time: 0, right: 0, delta: 0, choice: -1, correct: false });
+      rows.get(key).uids.push(p.id);
     });
+    const first = new Map(); // row key + question -> earliest answer
     answers.forEach(function (a) {
-      const r = rows.get(a.uid);
+      const key = owner[a.uid];
+      if (!key || !keys[a.q] || a.q > upto) return;
+      const k = key + "|" + a.q;
+      const seen = first.get(k);
+      if (!seen || (a.at || 0) < (seen.at || 0)) first.set(k, { key: key, q: a.q, choice: a.choice, at: a.at });
+    });
+    first.forEach(function (a) {
+      const r = rows.get(a.key);
       const key = keys[a.q];
-      if (!r || !key || a.q > upto) return;
       const elapsed = Math.max(0, (a.at || 0) - (starts[a.q] || a.at || 0));
       const ok = a.choice === key.correct;
       const pts = RO.answerPoints(ok, elapsed, key.seconds, key.points, scoring);
@@ -220,27 +233,7 @@
       r.rank = prev && prev.score === r.score && prev.time === r.time ? prev.rank : i + 1;
       r.time = Math.round(r.time);
     });
-    const teamMap = new Map();
-    list.forEach(function (r) {
-      if (!r.team) return;
-      if (!teamMap.has(r.team)) teamMap.set(r.team, { name: r.team, total: 0, members: 0, time: 0 });
-      const t = teamMap.get(r.team);
-      t.total += r.score;
-      t.time += r.time;
-      t.members += 1;
-    });
-    // A team's score is the average of its members, so team size does not decide the result.
-    const teams = Array.from(teamMap.values()).map(function (t) {
-      return { name: t.name, members: t.members, score: Math.round((t.total / t.members) * 10) / 10, time: Math.round(t.time / t.members) };
-    });
-    teams.sort(function (a, b) {
-      return b.score - a.score || a.time - b.time || a.name.localeCompare(b.name);
-    });
-    teams.forEach(function (t, i) {
-      const prev = teams[i - 1];
-      t.rank = prev && prev.score === t.score && prev.time === t.time ? prev.rank : i + 1;
-    });
-    return { rows: list, teams: teams };
+    return { rows: list };
   };
 
   /* ---------- Host's quiz, kept on this device ---------- */
