@@ -37,7 +37,7 @@ If the host laptop or a phone reloads mid-game, it picks up where it left off.
 - **Correct plus speed:** a correct answer earns 1,000 points at the start of the clock, sliding to 500 at the buzzer, times the question's point value.
 - **Correct answers only:** a correct answer earns the question's point value. Ties go to whoever spent less time on their correct answers.
 - **Double points:** a question with a point value of 2 or more turns the big screen and the phones red and shows a pulsing ×2 badge.
-- **Teams:** one device per team and one scoreboard row per team. A second device can join a team only after a warning, for example to replace a phone that died; if two devices ever answer the same question for a team, only the earlier answer counts.
+- **Teams:** one device per team and one scoreboard row per team. A team that is already connected cannot be joined from a second device. If a team's device fails, an organizer types the takeover password on the replacement device; the old device is then disconnected and the team keeps its score.
 
 ## Good to know before the day
 

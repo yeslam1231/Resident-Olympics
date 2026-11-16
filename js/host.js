@@ -433,8 +433,25 @@
       if (d && d.phase !== "final") stageQuestion(d.qIndex + 1).catch(function () {});
       liveRender();
     }, onErr));
-    unsubs.push(be.onCol("games/" + c + "/players", function (list) { P = list; liveRender(); }, onErr));
+    unsubs.push(be.onCol("games/" + c + "/players", function (list) { P = list; oneDevicePerTeam(); liveRender(); }, onErr));
     unsubs.push(be.onCol("games/" + c + "/answers", function (list) { A = list; gotAnswers = true; liveRender(); }, onErr));
+  }
+  // Team games allow one device per team. If two are connected, keep the replacement that
+  // was admitted with the organizer password, otherwise the device that joined first.
+  function oneDevicePerTeam() {
+    if (!teamMode()) return;
+    const by = {};
+    P.forEach(function (p) { (by[p.team || p.name] = by[p.team || p.name] || []).push(p); });
+    Object.keys(by).forEach(function (t) {
+      const list = by[t];
+      if (list.length < 2) return;
+      list.sort(function (a, b) { return (a.joinedAt || 0) - (b.joinedAt || 0); });
+      const replacements = list.filter(function (p) { return p.takeover; });
+      const keep = replacements.length ? replacements[replacements.length - 1] : list[0];
+      list.forEach(function (p) {
+        if (p !== keep) be.deleteDoc("games/" + code + "/players/" + p.id).catch(function () {});
+      });
+    });
   }
   // Live updates must not rebuild the question editor while the host is typing in it.
   function liveRender() {

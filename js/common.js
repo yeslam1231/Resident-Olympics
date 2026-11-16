@@ -64,6 +64,16 @@
     document.addEventListener("visibilitychange", ask);
   };
 
+  // Organizer password for moving a team to a replacement device. Only its fingerprint is kept
+  // here, so the password itself is not readable in the page source.
+  const TAKEOVER_HASH = "d61f3fb83502e309bbffb8574cff52b916a53f009d93315c00d02b0440b6d425";
+  RO.checkTakeover = async function (password) {
+    if (!window.crypto || !crypto.subtle) return false;
+    const bytes = new TextEncoder().encode("resident-olympics-takeover:" + String(password || "").trim());
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)));
+    return hash.map(function (b) { return b.toString(16).padStart(2, "0"); }).join("") === TAKEOVER_HASH;
+  };
+
   /* ---------- Small utilities ---------- */
   RO.uid = function () {
     return Math.random().toString(36).slice(2, 10);
@@ -200,7 +210,9 @@
     });
     const first = new Map(); // row key + question -> earliest answer
     answers.forEach(function (a) {
-      const key = owner[a.uid];
+      // In a team game an answer carries its team, so the score survives a change of device.
+      let key = teamMode && a.team ? "team:" + a.team : owner[a.uid];
+      if (teamMode && a.team && !rows.has(key)) rows.set(key, { uid: key, uids: [], name: a.team, score: 0, time: 0, right: 0, delta: 0, choice: -1, correct: false });
       if (!key || !keys[a.q] || a.q > upto) return;
       const k = key + "|" + a.q;
       const seen = first.get(k);

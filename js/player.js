@@ -19,6 +19,7 @@
   let note = "";
   let sceneKey = "";
   let takenTeams = []; // teams that already have a device, as seen when this phone looked up the game
+  let chosenTeam = ""; // team picked in the join form
   let confirmTeam = ""; // team the player has been warned is already connected
   let qSubs = {}; // question number -> unsubscribe
   let qCache = {}; // question number -> question document
@@ -128,13 +129,18 @@
       } },
         teams.length
           // Team game: one device per team, so the team name is the player.
-          ? h("label.field", h("span", "Your team (one device per team)"),
-              h("select", { id: "team" }, h("option", { value: "" }, "Choose your team…"), teams.map(function (t) {
-                return h("option", { value: t, selected: t === confirmTeam }, t + (takenTeams.indexOf(t) >= 0 ? " (already connected)" : ""));
-              })))
+          ? [h("label.field", h("span", "Your team (one device per team)"),
+              h("select", { id: "team", onchange: function (e) { chosenTeam = e.target.value; confirmTeam = takenTeams.indexOf(chosenTeam) >= 0 ? chosenTeam : ""; note = ""; render(); } },
+                h("option", { value: "" }, "Choose your team…"), teams.map(function (t) {
+                  return h("option", { value: t, selected: t === chosenTeam }, t + (takenTeams.indexOf(t) >= 0 ? " (already connected)" : ""));
+                }))),
+              confirmTeam
+                ? h("label.field", h("span", "Organizer password to replace this team's device"),
+                    h("input", { type: "password", id: "takeover-pass", autocomplete: "off" }))
+                : null]
           : h("label.field", h("span", "Your name"),
               h("input", { type: "text", id: "name", maxlength: 24, autocomplete: "name", placeholder: "Dr. Al-Harbi", value: "" })),
-        h("button.btn.primary.big", { type: "submit", disabled: sending }, confirmTeam ? "Use this device for " + confirmTeam : "Join"),
+        h("button.btn.primary.big", { type: "submit", disabled: sending }, confirmTeam ? "Replace the device for " + confirmTeam : "Join"),
         h("button.btn.quiet", { type: "button", onclick: function () { lobbyInfo = null; note = ""; confirmTeam = ""; render(); } }, "Use a different code")
       ),
     ]);
@@ -145,15 +151,22 @@
       return render();
     }
     takenTeams = await teamsInUse(code);
-    if (takenTeams.indexOf(team) >= 0 && confirmTeam !== team) {
-      // A second device may only take over on purpose, for example when a phone has died.
+    if (takenTeams.indexOf(team) < 0) return join(team, team, false);
+    // Only one device per team. Replacing it needs the organizer's password.
+    const field = document.getElementById("takeover-pass");
+    if (confirmTeam !== team || !field) {
+      chosenTeam = team;
       confirmTeam = team;
-      note = team + " is already connected on another device. Only one device per team should answer. Press the button again only if this device is replacing it.";
+      note = team + " is already playing on another device. Only one device per team is allowed. If that device has a problem, ask an organizer to enter the password here.";
       return render();
     }
-    return join(team, team);
+    if (!(await RO.checkTakeover(field.value))) {
+      note = "That password is not correct. Ask an organizer.";
+      return render();
+    }
+    return join(team, team, true);
   }
-  async function join(name, team) {
+  async function join(name, team, takeover) {
     name = String(name || "").trim().replace(/\s+/g, " ").slice(0, 24);
     if (!name) {
       note = "Enter a name so the scoreboard can show you.";
@@ -161,7 +174,7 @@
     }
     sending = true;
     try {
-      await be.setDoc("games/" + code + "/players/" + be.uid, { name: name, team: team || "", joinedAt: be.TS }, { calibrate: "joinedAt" });
+      await be.setDoc("games/" + code + "/players/" + be.uid, { name: name, team: team || "", takeover: !!takeover, joinedAt: be.TS }, { calibrate: "joinedAt" });
       me = { name: name, team: team || "" };
       lsSet(SESSION_KEY, JSON.stringify({ code: code, name: me.name, team: me.team }));
       note = "";
@@ -187,7 +200,7 @@
     let seenSelf = false;
     unsubs.push(be.onDoc(base + "/players/" + be.uid, function (d) {
       if (d) seenSelf = true;
-      else if (seenSelf) leave("You were removed from the game. You can join again.");
+      else if (seenSelf) leave(me && me.team ? "This team is now playing on another device. Only one device per team can play." : "You were removed from the game. You can join again.");
     }, lost));
     unsubs.push(be.onDoc(base + "/meta/board", function (d) { board = d; render(); }, lost));
   }
@@ -251,7 +264,7 @@
     sending = true;
     render(true);
     try {
-      await be.setDoc("games/" + code + "/answers/" + n + "_" + be.uid, { q: n, uid: be.uid, choice: picked.i, at: be.TS }, { createOnly: true });
+      await be.setDoc("games/" + code + "/answers/" + n + "_" + be.uid, { q: n, uid: be.uid, choice: picked.i, team: me.team || "", at: be.TS }, { createOnly: true });
       lsSet("ro-ans-" + code + "-" + n + "-" + be.uid, String(picked.i));
     } catch (e) {
       RO.toast("That answer did not get through. Time may be up.", "bad");
