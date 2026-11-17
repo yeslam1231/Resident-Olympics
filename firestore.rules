@@ -37,6 +37,20 @@ service cloud.firestore {
         allow write: if isHost(code);
       }
 
+      // Which device plays for each team (document id = the team's position in the game's list).
+      // Claiming a free team needs nothing; taking over a claimed team needs the organizer password.
+      match /teams/{t} {
+        allow read: if isHost(code) || (signedIn() && resource.data.uid == request.auth.uid);
+        allow create: if signedIn()
+          && t.matches('^[0-9]{1,2}$')
+          && request.resource.data.uid == request.auth.uid;
+        allow update: if signedIn()
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.proof is string
+          && hashing.sha256('resident-olympics-takeover:' + request.resource.data.proof).toHexString().lower() == 'd61f3fb83502e309bbffb8574cff52b916a53f009d93315c00d02b0440b6d425';
+        allow delete: if isHost(code);
+      }
+
       match /players/{uid} {
         allow read: if signedIn();
         allow create, update: if signedIn()
@@ -64,7 +78,12 @@ service cloud.firestore {
           && request.resource.data.at == request.time
           && game(code).phase == 'question'
           && game(code).qIndex == request.resource.data.q
-          && exists(/databases/$(database)/documents/games/$(code)/players/$(request.auth.uid));
+          && exists(/databases/$(database)/documents/games/$(code)/players/$(request.auth.uid))
+          // In a team game only the device holding the team's claim may answer.
+          && (game(code).teams.size() == 0
+              || (request.resource.data.ti is int
+                  && game(code).teams[request.resource.data.ti] == request.resource.data.team
+                  && get(/databases/$(database)/documents/games/$(code)/teams/$(string(request.resource.data.ti))).data.uid == request.auth.uid));
       }
     }
   }

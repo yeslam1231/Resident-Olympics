@@ -19,6 +19,8 @@
   let A = []; // answers
   let unsubs = [];
   let stageKey = "";
+  let claims = {}; // team position -> {uid, at}: the device that plays for each team
+  let rulesOutdated = false; // the Firebase rules predate team claims
   let gotAnswers = false; // the answers list has arrived at least once since connecting
   let revealing = false;
   let revealedCount = -1; // answers counted in the last reveal of the current question
@@ -434,10 +436,21 @@
       liveRender();
     }, onErr));
     unsubs.push(be.onCol("games/" + c + "/players", function (list) { P = list; oneDevicePerTeam(); liveRender(); }, onErr));
+    unsubs.push(be.onCol("games/" + c + "/teams", function (list) {
+      claims = {};
+      list.forEach(function (d) { claims[d.id] = d; });
+      rulesOutdated = false;
+      oneDevicePerTeam();
+      liveRender();
+    }, function () {
+      // Old rules have no team claims: teams cannot join until the new rules are published.
+      rulesOutdated = true;
+      render(true);
+    }));
     unsubs.push(be.onCol("games/" + c + "/answers", function (list) { A = list; gotAnswers = true; liveRender(); }, onErr));
   }
-  // Team games allow one device per team. If two are connected, keep the replacement that
-  // was admitted with the organizer password, otherwise the device that joined first.
+  // Team games allow one device per team. The team claim in the database decides which device
+  // that is; any other device for the team that joined before the current claim is disconnected.
   function oneDevicePerTeam() {
     if (!teamMode()) return;
     const by = {};
@@ -445,12 +458,17 @@
     Object.keys(by).forEach(function (t) {
       const list = by[t];
       if (list.length < 2) return;
-      list.sort(function (a, b) { return (a.joinedAt || 0) - (b.joinedAt || 0); });
-      const replacements = list.filter(function (p) { return p.takeover; });
-      const keep = replacements.length ? replacements[replacements.length - 1] : list[0];
-      list.forEach(function (p) {
-        if (p !== keep) be.deleteDoc("games/" + code + "/players/" + p.id).catch(function () {});
-      });
+      const claim = claims[String(G.teams.indexOf(t))];
+      let drop;
+      if (claim && claim.uid) {
+        drop = list.filter(function (p) { return p.id !== claim.uid && (p.joinedAt || 0) <= (claim.at || 0); });
+      } else {
+        list.sort(function (a, b) { return (a.joinedAt || 0) - (b.joinedAt || 0); });
+        const replacements = list.filter(function (p) { return p.takeover; });
+        const keep = replacements.length ? replacements[replacements.length - 1] : list[0];
+        drop = list.filter(function (p) { return p !== keep; });
+      }
+      drop.forEach(function (p) { be.deleteDoc("games/" + code + "/players/" + p.id).catch(function () {}); });
     });
   }
   // Live updates must not rebuild the question editor while the host is typing in it.
@@ -466,6 +484,8 @@
     P = [];
     A = [];
     gotAnswers = false;
+    claims = {};
+    rulesOutdated = false;
     stageKey = "";
   }
 
@@ -652,6 +672,7 @@
             ),
             h("div.roster",
               h("h2", { id: "roster-title" }, rosterTitle()),
+              rulesOutdated && G.teams.length ? h("div.notice", h("strong", "Teams cannot join yet. "), "Publish the latest firestore.rules in the Firebase console (Firestore → Rules), then reload this page.") : null,
               h("p.hint", { id: "roster-hint", hidden: P.length > 0 }, G.teams.length ? "Team names appear here as each team scans the code and joins on one device." : "Names appear here as residents scan the code and join."),
               h("div.names", { id: "roster" }, rosterNames())
             )
@@ -840,6 +861,7 @@
       }
     }
     RO.keepAwake();
+    RO.watchVersion();
     setInterval(tick, 200);
     render();
   }

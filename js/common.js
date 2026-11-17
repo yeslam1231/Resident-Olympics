@@ -74,6 +74,29 @@
     return hash.map(function (b) { return b.toString(16).padStart(2, "0"); }).join("") === TAKEOVER_HASH;
   };
 
+  // Site version. A page left open from before an update keeps running the old code, so every
+  // page checks version.json and asks to be reloaded when a newer version has been published.
+  RO.VERSION = "2026-11-17-1";
+  RO.watchVersion = function () {
+    let shown = false;
+    async function check() {
+      if (shown) return;
+      try {
+        const r = await fetch("version.json?t=" + Date.now(), { cache: "no-store" });
+        const v = (await r.json()).v;
+        if (v && v !== RO.VERSION) {
+          shown = true;
+          document.body.appendChild(RO.h("div", { id: "update-bar", role: "alert" },
+            h("span", "This page has been updated. Reload to use the latest version."),
+            h("button.btn.small.primary", { type: "button", onclick: function () { location.reload(); } }, "Reload")));
+        }
+      } catch (e) {}
+    }
+    const h = RO.h;
+    check();
+    setInterval(check, 60000);
+  };
+
   /* ---------- Small utilities ---------- */
   RO.uid = function () {
     return Math.random().toString(36).slice(2, 10);

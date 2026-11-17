@@ -342,6 +342,13 @@ body.double {
 @media (max-width: 760px) { .stage-body.revealed { grid-template-columns: minmax(0, 1fr); } }
 .standing { text-align: center; padding: 14px; border-radius: 16px; background: var(--surface); display: flex; flex-direction: column; gap: 6px; }
 
+#update-bar {
+  position: fixed; left: 50%; top: calc(10px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 60;
+  display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 24px);
+  background: var(--gold); color: var(--gold-ink); padding: 8px 8px 8px 16px; border-radius: 999px; font-weight: 600; font-size: 15px;
+}
+#update-bar .btn { background: var(--gold-ink); color: var(--gold); border-color: var(--gold-ink); }
+
 /* ---------- Toast ---------- */
 #toast {
   position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 30px);

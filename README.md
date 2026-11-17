@@ -37,7 +37,7 @@ If the host laptop or a phone reloads mid-game, it picks up where it left off.
 - **Correct plus speed:** a correct answer earns 1,000 points at the start of the clock, sliding to 500 at the buzzer, times the question's point value.
 - **Correct answers only:** a correct answer earns the question's point value. Ties go to whoever spent less time on their correct answers.
 - **Double points:** a question with a point value of 2 or more turns the big screen and the phones red and shows a pulsing ×2 badge.
-- **Teams:** one device per team and one scoreboard row per team. A team that is already connected cannot be joined from a second device. If a team's device fails, an organizer types the takeover password on the replacement device; the old device is then disconnected and the team keeps its score.
+- **Teams:** one device per team and one scoreboard row per team, enforced by the database rules: only the device holding a team's claim can answer for it. If a team's device fails, an organizer types the takeover password on the replacement device; the old device is disconnected and the team keeps its score. This needs the current [`firestore.rules`](firestore.rules) published in Firebase.
 
 ## Good to know before the day
 
@@ -45,6 +45,10 @@ If the host laptop or a phone reloads mid-game, it picks up where it left off.
 - Firebase's free plan is enough for one conference game. Each question image is sent to every phone, so keep images to what the question needs.
 - Rehearse once on the venue Wi-Fi with a few phones. Phones on mobile data work too.
 - Anyone who has the host address could open their own separate game, but cannot touch yours: a game belongs to the browser that opened it.
+
+## Updating the site
+
+Pages left open from before an update keep running the old code. Each page checks `version.json` every minute and shows **Reload** when a newer version is published. When changing the code, set the same new value in `version.json`, `RO.VERSION` in `js/common.js` and the `?v=` on the files in `index.html` and `host.html`.
 
 ## Online backup of the questions
 

@@ -19,6 +19,7 @@
   let note = "";
   let sceneKey = "";
   let takenTeams = []; // teams that already have a device, as seen when this phone looked up the game
+  let teamWatch = false; // listening for this device losing its team claim
   let chosenTeam = ""; // team picked in the join form
   let confirmTeam = ""; // team the player has been warned is already connected
   let qSubs = {}; // question number -> unsubscribe
@@ -145,13 +146,32 @@
       ),
     ]);
   }
+  // Claims the team for this device. The database refuses the claim if another device holds
+  // the team, unless the organizer password is given.
+  async function claimTeam(team, password) {
+    const ti = (lobbyInfo.teams || []).indexOf(team);
+    const data = { uid: be.uid, at: be.TS };
+    if (password != null) data.proof = String(password).trim();
+    await be.setDoc("games/" + code + "/teams/" + ti, data);
+  }
   async function joinTeam(team) {
     if (!team) {
       note = "Choose your team.";
       return render();
     }
     takenTeams = await teamsInUse(code);
-    if (takenTeams.indexOf(team) < 0) return join(team, team, false);
+    if (takenTeams.indexOf(team) < 0) {
+      try {
+        await claimTeam(team, null);
+        return join(team, team, false);
+      } catch (e) {
+        if (!/permission|insufficient/i.test(String(e && (e.code || e.message)))) {
+          note = "Could not join. Check your connection and try again.";
+          return render();
+        }
+        takenTeams.push(team); // another device claimed it a moment earlier
+      }
+    }
     // Only one device per team. Replacing it needs the organizer's password.
     const field = document.getElementById("takeover-pass");
     if (confirmTeam !== team || !field) {
@@ -162,6 +182,14 @@
     }
     if (!(await RO.checkTakeover(field.value))) {
       note = "That password is not correct. Ask an organizer.";
+      return render();
+    }
+    try {
+      await claimTeam(team, field.value);
+    } catch (e) {
+      note = /permission|insufficient/i.test(String(e && (e.code || e.message)))
+        ? "The game refused the change of device. Ask an organizer to check the Firebase rules."
+        : "Could not join. Check your connection and try again.";
       return render();
     }
     return join(team, team, true);
@@ -194,6 +222,14 @@
     unsubs.push(be.onDoc(base, function (d) {
       G = d;
       if (!d) return leave("The host closed this game.");
+      const ti = me && me.team ? (d.teams || []).indexOf(me.team) : -1;
+      if (!teamWatch && ti >= 0 && be.mode === "live") {
+        // Once another device takes the team over, this device can no longer read the claim.
+        teamWatch = true;
+        unsubs.push(be.onDoc(base + "/teams/" + ti, function () {}, function (e) {
+          if (/permission|insufficient/i.test(String(e && (e.code || e.message)))) leave("This team is now playing on another device. Only one device per team can play.");
+        }));
+      }
       watchQuestions();
       render();
     }, lost));
@@ -203,10 +239,12 @@
       else if (seenSelf) leave(me && me.team ? "This team is now playing on another device. Only one device per team can play." : "You were removed from the game. You can join again.");
     }, lost));
     unsubs.push(be.onDoc(base + "/meta/board", function (d) { board = d; render(); }, lost));
+
   }
   function detach() {
     unsubs.forEach(function (u) { u(); });
     unsubs = [];
+    teamWatch = false;
     Object.keys(qSubs).forEach(function (k) { qSubs[k](); });
     qSubs = {};
     qCache = {};
@@ -264,10 +302,10 @@
     sending = true;
     render(true);
     try {
-      await be.setDoc("games/" + code + "/answers/" + n + "_" + be.uid, { q: n, uid: be.uid, choice: picked.i, team: me.team || "", at: be.TS }, { createOnly: true });
+      await be.setDoc("games/" + code + "/answers/" + n + "_" + be.uid, { q: n, uid: be.uid, choice: picked.i, team: me.team || "", ti: me.team ? (G.teams || []).indexOf(me.team) : -1, at: be.TS }, { createOnly: true });
       lsSet("ro-ans-" + code + "-" + n + "-" + be.uid, String(picked.i));
     } catch (e) {
-      RO.toast("That answer did not get through. Time may be up.", "bad");
+      RO.toast(me && me.team ? "That answer did not get through. Time may be up, or this team is playing on another device." : "That answer did not get through. Time may be up.", "bad");
     }
     sending = false;
     render(true);
@@ -411,6 +449,7 @@
     }
     if (!me && fromLink) await findGame(fromLink);
     RO.keepAwake();
+    RO.watchVersion();
     setInterval(tick, 200);
     render();
   }
